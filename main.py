@@ -1,5 +1,6 @@
 import requests
 import configparser
+import pathlib
 import pandas as pd
 import json
 import csv
@@ -23,14 +24,7 @@ class InvalidInputError(Exception):
     pass
 
 
-def fetch_time_series_intraday(
-    symbol,
-    interval,
-    num_months,
-    adjusted="true",
-    outputsize="compact",
-    datatype="json",
-):
+def fetch_time_series_intraday(symbol, interval, num_months):
 
     allowed_intervals = ("1min", "5min", "15min", "30min", "60min")
 
@@ -48,7 +42,7 @@ def fetch_time_series_intraday(
 
     months = allowed_slices[slice(0, int(num_months))]
 
-    df_chunks = []
+    dfs = []
 
     with requests.Session() as s:
         for month in months:
@@ -68,9 +62,15 @@ def fetch_time_series_intraday(
 
             df = df.set_index("time")
 
-            df_chunks.append(df)
+            dfs.append(df)
 
-    return df_chunks
+    output_path = pathlib.Path(f"Data/{interval}/{symbol}")
+
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    for df in dfs:
+        filename = str(df.index[0]).replace(" ", "_") + ".parquet"
+        df.to_parquet(output_path.joinpath(filename).as_posix(), engine="pyarrow")
 
 
 def write_json_data(data):
