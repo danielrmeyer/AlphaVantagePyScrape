@@ -2,6 +2,7 @@ import requests
 import configparser
 import pandas as pd
 import json
+import csv
 
 from requests.api import head
 
@@ -18,31 +19,58 @@ def query_api(function, symbol, interval, outputsize, accesskey):
     return data
 
 
+class InvalidInputError(Exception):
+    pass
+
+
 def fetch_time_series_intraday(
-    symbol, interval, adjusted="true", outputsize="compact", datatype="json"
+    symbol,
+    interval,
+    num_months,
+    adjusted="true",
+    outputsize="compact",
+    datatype="json",
 ):
 
-    url = f"https://www.alphavantage.co/query?function={function}&symbol={symbol}&interval={interval}&apikey=accesskey"
+    allowed_intervals = ("1min", "5min", "15min", "30min", "60min")
 
+    host = "https://www.alphavantage.co"
 
-# def fetch_time_series_intraday(symbol, interval, outputsize):
-#     args = ("TIME_SERIES_INTRADAY", symbol, interval, outputsize, accesskey)
+    if interval not in allowed_intervals:
+        raise InvalidInputError(f"{interval} not an allowed value for interval.")
 
-#     data = query_api(*args)
+    if num_months < 1 or num_months > 24:
+        raise InvalidInputError(
+            f"{str(num_months)} is out of range.  num_months must be between 1 and 24"
+        )
 
-#     df, md = transform(data)
+    allowed_slices = [f"year{y}month{m}" for y in [1, 2] for m in range(1, 13)]
 
-#     return df, md
+    months = allowed_slices[slice(0, int(num_months))]
 
+    df_chunks = []
 
-# def fetch_time_series_daily(symbol, interval, outputsize):
-#     args = ("TIME_SERIES_DAILY", symbol, outputsize, accesskey)
+    with requests.Session() as s:
+        for month in months:
+            url = f"{host}/query?function=TIME_SERIES_INTRADAY_EXTENDED&symbol={symbol}&interval={interval}&slice={month}&apikey={accesskey}"
 
-#     data = query_api(*args)
+            download = s.get(url)
+            decoded_content = download.content.decode("utf-8")
+            data = list(csv.reader(decoded_content.splitlines(), delimiter=","))
+            df = pd.DataFrame(data[1:], columns=data[0])
 
-#     df, md = transform(data)
+            df["time"] = pd.to_datetime(df["time"])
+            df["open"] = pd.to_numeric(df["open"])
+            df["high"] = pd.to_numeric(df["high"])
+            df["low"] = pd.to_numeric(df["low"])
+            df["close"] = pd.to_numeric(df["close"])
+            df["volume"] = pd.to_numeric(df["volume"])
 
-#     return df, md
+            df = df.set_index("time")
+
+            df_chunks.append(df)
+
+    return df_chunks
 
 
 def write_json_data(data):
@@ -78,15 +106,6 @@ def transform(data):
 
     return df, meta_data
 
-
-allowed_functions = (
-    "TIME_SERIES_INTRADAY",
-    "TIME_SERIES_INTRADAY_EXTENDED",
-    "TIME_SERIES_DAILY",
-    "TIME_SERIES_DAILY_ADJUSTED",
-)
-
-allowed_intervals = ("1min", "5min")
 
 # Example args
 function = "TIME_SERIES_INTRADAY"
