@@ -12,14 +12,6 @@ config.read("config.cfg")
 accesskey = config["alphavantage"]["accesskey"]
 
 
-def query_api(function, symbol, interval, outputsize, accesskey):
-    url = f"https://www.alphavantage.co/query?function={function}&symbol={symbol}&interval={interval}&apikey=accesskey"
-
-    r = requests.get(url)
-    data = r.json()
-    return data
-
-
 class InvalidInputError(Exception):
     pass
 
@@ -73,12 +65,7 @@ def fetch_time_series_intraday(symbol, interval, num_months):
         df.to_parquet(output_path.joinpath(filename).as_posix(), engine="pyarrow")
 
 
-def write_json_data(data):
-    with open("data.json", "w") as output_fp:
-        output_fp.write(json.dumps(data))
-
-
-def transform(data):
+def json_to_dataframe(data):
     meta_data = data["Meta Data"]
     ts = data["Time Series (5min)"]
 
@@ -107,13 +94,23 @@ def transform(data):
     return df, meta_data
 
 
-# Example args
-function = "TIME_SERIES_INTRADAY"
-symbol = "FCX"
-interval = "5min"
-outputsize = "compact"
+if __name__ == "__main__":
 
+    # Example args
+    symbol = "FCX"
+    interval = "60min"
+    months = 3
 
-data, metadata = fetch_time_series_daily(
-    "FCX",
-)
+    # Fetch some data from api
+    fetch_time_series_intraday(symbol, interval, months)
+
+    # Now read all the data back into a big dataframe
+    import glob
+
+    dfs = []
+    data_files = glob.glob("Data/60min/FCX/*.parquet")
+    for file_ in data_files:
+        df = pd.read_parquet(file_, engine="pyarrow")
+        dfs.append(df)
+
+    big_df = pd.concat(dfs)
