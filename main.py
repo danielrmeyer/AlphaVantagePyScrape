@@ -5,7 +5,7 @@ import pandas as pd
 import json
 import csv
 
-from requests.api import head
+from ratelimit import limits, sleep_and_retry
 
 config = configparser.ConfigParser()
 config.read("config.cfg")
@@ -16,7 +16,9 @@ class InvalidInputError(Exception):
     pass
 
 
-def fetch_time_series_intraday(symbol, interval, num_months):
+@sleep_and_retry
+@limits(calls=3, period=60)  # we are only allowed 5 calls per minute
+def fetch_time_series_intraday(symbol, interval, num_months, sleep=60):
 
     allowed_intervals = ("1min", "5min", "15min", "30min", "60min")
 
@@ -34,7 +36,9 @@ def fetch_time_series_intraday(symbol, interval, num_months):
 
     months = allowed_slices[slice(0, int(num_months))]
 
-    dfs = []
+    output_path = pathlib.Path(f"Data/{interval}/{symbol}")
+
+    output_path.mkdir(parents=True, exist_ok=True)
 
     with requests.Session() as s:
         for month in months:
@@ -53,16 +57,32 @@ def fetch_time_series_intraday(symbol, interval, num_months):
             df["volume"] = pd.to_numeric(df["volume"])
 
             df = df.set_index("time")
+            filename = str(df.index[0]).replace(" ", "_") + ".parquet"
+            df.to_parquet(output_path.joinpath(filename).as_posix(), engine="pyarrow")
 
-            dfs.append(df)
 
-    output_path = pathlib.Path(f"Data/{interval}/{symbol}")
+def fetch_time_series_daily_adjusted(symbol):
+    host = "https://www.alphavantage.co"
+    url = f"{host}/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol={symbol}&outputsize=full&datatype=csv&apikey={accesskey}"
+    r = requests.get(url)
+    decoded_content = r.content.decode("utf-8")
+    data = list(csv.reader(decoded_content.splitlines(), delimiter=","))
+    df = pd.DataFrame(data[1:], columns=data[0])
+
+    output_path = pathlib.Path(f"Data/day/{symbol}")
 
     output_path.mkdir(parents=True, exist_ok=True)
 
-    for df in dfs:
-        filename = str(df.index[0]).replace(" ", "_") + ".parquet"
-        df.to_parquet(output_path.joinpath(filename).as_posix(), engine="pyarrow")
+    df["time"] = pd.to_datetime(df["time"])
+    df["open"] = pd.to_numeric(df["open"])
+    df["high"] = pd.to_numeric(df["high"])
+    df["low"] = pd.to_numeric(df["low"])
+    df["close"] = pd.to_numeric(df["close"])
+    df["volume"] = pd.to_numeric(df["volume"])
+
+    df = df.set_index("time")
+    filename = str(df.index[0]).replace(" ", "_") + ".parquet"
+    df.to_parquet(output_path.joinpath(filename).as_posix(), engine="pyarrow")
 
 
 def json_to_dataframe(data):
@@ -98,8 +118,8 @@ if __name__ == "__main__":
 
     # Example args
     symbol = "FCX"
-    interval = "60min"
-    months = 3
+    interval = "1min"
+    months = 24
 
     # Fetch some data from api
     fetch_time_series_intraday(symbol, interval, months)
