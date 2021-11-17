@@ -20,6 +20,23 @@ class ApiCallFrequencyExceeded(Exception):
     pass
 
 
+def search(search_word):
+    host = "https://www.alphavantage.co"
+    url = (
+        f"{host}/query?function=SYMBOL_SEARCH&keywords={search_word}&apikey={accesskey}"
+    )
+
+    r = requests.get(url)
+
+    data = r.json()
+
+    search_results = [
+        (res.get("1. symbol"), res.get("2. name")) for res in data["bestMatches"]
+    ]
+
+    return search_results
+
+
 def fetch_time_series_intraday(symbol, interval, num_months, sleep=60):
 
     allowed_intervals = ("1min", "5min", "15min", "30min", "60min")
