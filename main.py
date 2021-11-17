@@ -16,8 +16,10 @@ class InvalidInputError(Exception):
     pass
 
 
-@sleep_and_retry
-@limits(calls=3, period=60)  # we are only allowed 5 calls per minute
+class ApiCallFrequencyExceeded(Exception):
+    pass
+
+
 def fetch_time_series_intraday(symbol, interval, num_months, sleep=60):
 
     allowed_intervals = ("1min", "5min", "15min", "30min", "60min")
@@ -40,13 +42,31 @@ def fetch_time_series_intraday(symbol, interval, num_months, sleep=60):
 
     output_path.mkdir(parents=True, exist_ok=True)
 
+    @sleep_and_retry
+    @limits(calls=3, period=60)  # we are only allowed 5 calls per minute
+    def do_download(s, url):
+        print(f"Doing download: {url}")
+        download = s.get(url)
+        decoded_content = download.content.decode("utf-8")
+        data = list(csv.reader(decoded_content.splitlines(), delimiter=","))
+
+        if (
+            "Thank you for using Alpha Vantage! Our standard API call frequency is 5 calls"
+            in download.text
+        ):
+            raise ApiCallFrequencyExceeded(download.text)
+        return data
+
     with requests.Session() as s:
         for month in months:
             url = f"{host}/query?function=TIME_SERIES_INTRADAY_EXTENDED&symbol={symbol}&interval={interval}&slice={month}&apikey={accesskey}"
 
-            download = s.get(url)
-            decoded_content = download.content.decode("utf-8")
-            data = list(csv.reader(decoded_content.splitlines(), delimiter=","))
+            # download = s.get(url)
+            # decoded_content = download.content.decode("utf-8")
+            # data = list(csv.reader(decoded_content.splitlines(), delimiter=","))
+
+            data = do_download(s, url)
+
             df = pd.DataFrame(data[1:], columns=data[0])
 
             df["time"] = pd.to_datetime(df["time"])
