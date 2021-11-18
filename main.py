@@ -20,6 +20,8 @@ class ApiCallFrequencyExceeded(Exception):
     pass
 
 
+@sleep_and_retry
+@limits(calls=3, period=60)  # TODO parameterize
 def search(search_word):
     host = "https://www.alphavantage.co"
     url = (
@@ -60,7 +62,7 @@ def fetch_time_series_intraday_extended(symbol, interval, num_months, sleep=60):
     output_path.mkdir(parents=True, exist_ok=True)
 
     @sleep_and_retry
-    @limits(calls=3, period=60)  # we are only allowed 5 calls per minute
+    @limits(calls=3, period=60)  # TODO parameterize this
     def do_download(s, url):
         print(f"Doing download: {url}")
         download = s.get(url)
@@ -94,6 +96,8 @@ def fetch_time_series_intraday_extended(symbol, interval, num_months, sleep=60):
             df.to_parquet(output_path.joinpath(filename).as_posix(), engine="pyarrow")
 
 
+@sleep_and_retry
+@limits(calls=3, period=60)  # TODO parameterize this
 def fetch_time_series_daily_adjusted(symbol):
     host = "https://www.alphavantage.co"
     url = f"{host}/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol={symbol}&outputsize=full&datatype=csv&apikey={accesskey}"
@@ -162,7 +166,7 @@ if __name__ == "__main__":
     months = 24
 
     # Fetch some data from api
-    fetch_time_series_intraday(symbol, interval, months)
+    fetch_time_series_intraday_extended(symbol, interval, months)
 
     # Now read all the data back into a big dataframe
 
