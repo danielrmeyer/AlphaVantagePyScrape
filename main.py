@@ -4,7 +4,7 @@ import pathlib
 import pandas as pd
 import json
 import csv
-
+import glob
 from ratelimit import limits, sleep_and_retry
 
 config = configparser.ConfigParser()
@@ -37,7 +37,7 @@ def search(search_word):
     return search_results
 
 
-def fetch_time_series_intraday(symbol, interval, num_months, sleep=60):
+def fetch_time_series_intraday_extended(symbol, interval, num_months, sleep=60):
 
     allowed_intervals = ("1min", "5min", "15min", "30min", "60min")
 
@@ -78,10 +78,6 @@ def fetch_time_series_intraday(symbol, interval, num_months, sleep=60):
         for month in months:
             url = f"{host}/query?function=TIME_SERIES_INTRADAY_EXTENDED&symbol={symbol}&interval={interval}&slice={month}&apikey={accesskey}"
 
-            # download = s.get(url)
-            # decoded_content = download.content.decode("utf-8")
-            # data = list(csv.reader(decoded_content.splitlines(), delimiter=","))
-
             data = do_download(s, url)
 
             df = pd.DataFrame(data[1:], columns=data[0])
@@ -110,7 +106,7 @@ def fetch_time_series_daily_adjusted(symbol):
 
     output_path.mkdir(parents=True, exist_ok=True)
 
-    df["time"] = pd.to_datetime(df["time"])
+    df["time"] = pd.to_datetime(df["timestamp"])
     df["open"] = pd.to_numeric(df["open"])
     df["high"] = pd.to_numeric(df["high"])
     df["low"] = pd.to_numeric(df["low"])
@@ -118,6 +114,7 @@ def fetch_time_series_daily_adjusted(symbol):
     df["volume"] = pd.to_numeric(df["volume"])
 
     df = df.set_index("time")
+    del df["timestamp"]
     filename = str(df.index[0]).replace(" ", "_") + ".parquet"
     df.to_parquet(output_path.joinpath(filename).as_posix(), engine="pyarrow")
 
@@ -151,6 +148,12 @@ def json_to_dataframe(data):
     return df, meta_data
 
 
+def load_data_files(glob_pattern):
+    return pd.concat(
+        [pd.read_parquet(file_, engine="pyarrow") for file_ in glob.glob(glob_pattern)]
+    )
+
+
 if __name__ == "__main__":
 
     # Example args
@@ -162,12 +165,5 @@ if __name__ == "__main__":
     fetch_time_series_intraday(symbol, interval, months)
 
     # Now read all the data back into a big dataframe
-    import glob
 
-    dfs = []
-    data_files = glob.glob("Data/60min/FCX/*.parquet")
-    for file_ in data_files:
-        df = pd.read_parquet(file_, engine="pyarrow")
-        dfs.append(df)
-
-    big_df = pd.concat(dfs)
+    df = load_data_files("Data/1min/FCX/*.parquet")
