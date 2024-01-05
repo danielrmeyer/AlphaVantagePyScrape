@@ -39,7 +39,7 @@ def search(search_word):
     return search_results
 
 
-def fetch_time_series_intraday_extended(symbol, interval, num_months, sleep=60):
+def fetch_time_series_intraday(symbol, interval, num_months, sleep=60):
 
     allowed_intervals = ("1min", "5min", "15min", "30min", "60min")
 
@@ -78,7 +78,7 @@ def fetch_time_series_intraday_extended(symbol, interval, num_months, sleep=60):
 
     with requests.Session() as s:
         for month in months:
-            url = f"{host}/query?function=TIME_SERIES_INTRADAY_EXTENDED&symbol={symbol}&interval={interval}&slice={month}&apikey={accesskey}"
+            url = f"{host}/query?function=TIME_SERIES_INTRADAY&datatype=csv&outputsize=compact&symbol={symbol}&interval={interval}&slice={month}&apikey={accesskey}"
 
             data = do_download(s, url)
 
@@ -140,14 +140,14 @@ def json_to_dataframe(data):
 
     sanitized_data.append([t, open, high, low, close, volume])
     df = pd.DataFrame(sanitized_data, columns=columns)
-    df["datetime"] = pd.to_datetime(df["datetime"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
     df["open"] = pd.to_numeric(df["open"])
     df["high"] = pd.to_numeric(df["high"])
     df["low"] = pd.to_numeric(df["low"])
     df["close"] = pd.to_numeric(df["close"])
     df["volume"] = pd.to_numeric(df["volume"])
 
-    df = df.set_index("datetime")
+    df = df.set_index("timestamp")
 
     return df, meta_data
 
@@ -162,11 +162,11 @@ if __name__ == "__main__":
 
     # Example args
     symbol = "FCX"
-    interval = "1min"
-    months = 24
+    interval = "5min"
+    months = 12
 
     # Fetch some data from api
-    fetch_time_series_intraday_extended(symbol, interval, months)
+    fetch_time_series_intraday(symbol, interval, months)
 
     # Now read all the data back into a big dataframe
 
